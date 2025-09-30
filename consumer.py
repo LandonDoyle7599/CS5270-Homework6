@@ -4,6 +4,14 @@ import argparse
 class Consumer:
     def __init__(self):
         self.args = self.parse_arguments()
+        self.s3_client = boto3.client('s3', region_name=self.args.region)
+        self.request_bucket = self.s3_client.Bucket(self.args.request_bucket)
+        if self.args.dynamodb_widget_table:
+            dynamo_client = boto3.client('dynamodb', region_name=self.args.region)
+            self.dynamo_widget_destination = dynamo_client.Table(self.args.dynamodb_widget_table)
+        elif self.args.widget_bucket:
+            self.s3_widget_destination = self.s3_resource.Bucket(self.args.widget_bucket) 
+
 
     def process_widgets(self):
         return
@@ -25,9 +33,9 @@ class Consumer:
         arg_parser.add_argument('-wb', '--widget-bucket', type=str, help='Name of the S3 bucket that holds the widgets')
         arg_parser.add_argument('-wkp', '--widget-key-prefix', type=str, default='widgets/', help='Prefix for widget objects (default=widgets/)')
         arg_parser.add_argument('-dwt', '--dynamodb-widget-table', type=str,  help='Name of the DynamoDB table that holds widgets')
-        arg_parser.add_argument('-pdbc', '--pdb-conn', type=str, help='Postgres Database connection string')
-        arg_parser.add_argument('-pdbu', '--pdb-username', type=str, help='Postgres Database username')
-        arg_parser.add_argument('-pdbp', '--pdb-password', type=str, help='Password for the Postgres database user')
+        # arg_parser.add_argument('-pdbc', '--pdb-conn', type=str, help='Postgres Database connection string')
+        # arg_parser.add_argument('-pdbu', '--pdb-username', type=str, help='Postgres Database username')
+        # arg_parser.add_argument('-pdbp', '--pdb-password', type=str, help='Password for the Postgres database user')
         arg_parser.add_argument('-qwt', '--queue-wait-timeout', type=int, default=10, help='The duration (in seconds) to wait for a message to arrive in the request when trying to receive a message (default=10)')
         arg_parser.add_argument('-qvt', '--queue-visibility-timeout', type=int, default=2, help='The duration (in seconds) to the messages received from the queue are hidden from others (default=2)')
         return arg_parser.parse_args()
