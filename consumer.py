@@ -39,7 +39,6 @@ class Consumer:
         if 'Contents' not in item:
             print("No more requests to process, waiting")
             #TODO: Implement wait based on argument length
-            continue
         request_key = item['Contents'][0]['Key']
         print(f"Processing request {request_key}")
         request_object = self.s3_client.get_object(Bucket=self.request_bucket_name, Key=request_key)
