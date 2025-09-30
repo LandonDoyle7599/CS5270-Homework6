@@ -5,22 +5,60 @@ class Consumer:
     def __init__(self):
         self.args = self.parse_arguments()
         self.s3_client = boto3.client('s3', region_name=self.args.region)
-        self.request_bucket = self.s3_client.Bucket(self.args.request_bucket)
+        self.request_bucket_name = self.args.request_bucket
+        
         if self.args.dynamodb_widget_table:
             dynamo_client = boto3.client('dynamodb', region_name=self.args.region)
-            self.dynamo_widget_destination = dynamo_client.Table(self.args.dynamodb_widget_table)
+            self.dynamo_widget_table_name = self.args.dynamodb_widget_table
+            self.store_in_dynamo = True
+            
         elif self.args.widget_bucket:
-            self.s3_widget_destination = self.s3_resource.Bucket(self.args.widget_bucket) 
+            self.s3_widget_bucket_name = self.args.widget_bucket
+            self.store_in_dynamo = False
+            
+        else:
+            print("No destination for widgets specified, exiting")
+            exit(1)
 
 
     def process_widgets(self):
+        #read requests one at a time (smallest key first) from request bucket, then delete and create widgets
+        while True:
+            item = self.s3_client.list_objects_v2(Bucket=self.request_bucket_name, MaxKeys=1)
+            if 'Contents' not in item:
+                print("No more requests to process, waiting")
+                #TODO: Implement wait based on argument length
+                continue
+            request_key = item['Contents'][0]['Key']
+            print(f"Processing request {request_key}")
+            request_object = self.s3_client.get_object(Bucket=self.request_bucket_name, Key=request_key)
+            request_data = request_object['Body'].read().decode('utf-8')
+            print(f"Request data: {request_data}")
+            self.s3_client.delete_object(Bucket=self.request_bucket_name, Key=request_key)
+            print(f"Deleted request {request_key} from bucket {self.request_bucket_name}")
+            
+            #process request based on type
+            if '"type": "WidgetCreateRequest"' in request_data:
+                self.widget_create()
+            elif '"type": "WidgetDeleteRequest"' in request_data:
+                self.widget_delete()
+            elif '"type": "WidgetUpdateRequest"' in request_data:
+                self.widget_update()
+            
+            
+    def widget_create(self):
         return
     
-    def store_in_dynamo(self):
+    def widget_delete(self):
+        #TODO: implement in future assignment
+        print("Processing delete request")
         return
     
-    def store_in_s3(self):
+    def widget_update(self):
+        #TODO: implement in future assignment
+        print("Processing update request")
         return
+        
     
     def parse_arguments(self):
         arg_parser = argparse.ArgumentParser(description='Consumer for processing widget requests.')
@@ -45,6 +83,59 @@ if __name__ == '__main__':
 
 
 
+#request format in JSON
+# {
+#   "$schema": "http://json-schema.org/draft-04/schema#",
+#   "type": "object",
+#   "properties": {
+#     "type": {
+#       "type": "string",
+#       "pattern": "WidgetCreateRequest|WidgetDeleteRequest|WidgetUpdateRequest"
+#     },
+#     "requestId": {
+#       "type": "string"
+#     },
+#     "widgetId": {
+#       "type": "string"
+#     },
+#     "owner": {
+#       "type": "string",
+#       "pattern": "[A-Za-z ]+"
+#     },
+#     "label": {
+#       "type": "string"
+#     },
+#     "description": {
+#       "type": "string"
+#     },
+#     "otherAttributes": {
+#       "type": "array",
+#       "items": [
+#         {
+#           "type": "object",
+#           "properties": {
+#             "name": {
+#               "type": "string"
+#             },
+#             "value": {
+#               "type": "string"
+#             }
+#           },
+#           "required": [
+#             "name",
+#             "value"
+#           ]
+#         }
+#       ]
+#     }
+#   },
+#   "required": [
+#     "type",
+#     "requestId",
+#     "widgetId",
+#     "owner"
+#   ]
+# }
 
 
 #arguments from provided consumer
