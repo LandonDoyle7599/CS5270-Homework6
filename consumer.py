@@ -24,19 +24,8 @@ class Consumer:
     def process_widgets(self):
         #read requests one at a time (smallest key first) from request bucket, then delete and create widgets
         while True:
-            item = self.s3_client.list_objects_v2(Bucket=self.request_bucket_name, MaxKeys=1)
-            if 'Contents' not in item:
-                print("No more requests to process, waiting")
-                #TODO: Implement wait based on argument length
-                continue
-            request_key = item['Contents'][0]['Key']
-            print(f"Processing request {request_key}")
-            request_object = self.s3_client.get_object(Bucket=self.request_bucket_name, Key=request_key)
-            request_data = request_object['Body'].read().decode('utf-8')
-            print(f"Request data: {request_data}")
-            self.s3_client.delete_object(Bucket=self.request_bucket_name, Key=request_key)
-            print(f"Deleted request {request_key} from bucket {self.request_bucket_name}")
-            
+            #FUTURE: leave room for different retrieval methods
+            request_data = self.retrieve_s3_request()
             #process request based on type
             if '"type": "WidgetCreateRequest"' in request_data:
                 self.widget_create()
@@ -45,7 +34,22 @@ class Consumer:
             elif '"type": "WidgetUpdateRequest"' in request_data:
                 self.widget_update()
             
-            
+    def retrieve_s3_request(self):
+        item = self.s3_client.list_objects_v2(Bucket=self.request_bucket_name, MaxKeys=1)
+        if 'Contents' not in item:
+            print("No more requests to process, waiting")
+            #TODO: Implement wait based on argument length
+            continue
+        request_key = item['Contents'][0]['Key']
+        print(f"Processing request {request_key}")
+        request_object = self.s3_client.get_object(Bucket=self.request_bucket_name, Key=request_key)
+        request_data = request_object['Body'].read().decode('utf-8')
+        print(f"Request data: {request_data}")
+        self.s3_client.delete_object(Bucket=self.request_bucket_name, Key=request_key)
+        print(f"Deleted request {request_key} from bucket {self.request_bucket_name}")
+        return request_data
+                    
+    
     def widget_create(self):
         return
     
