@@ -4,6 +4,7 @@ import time
 import json
 import logging
 import sys
+import os
 
 class Consumer:
     def __init__(self):
@@ -97,10 +98,11 @@ class Consumer:
         return
     
     def initialize_logger(self):
+        os.makedirs('logs', exist_ok=True)
         logger = logging.getLogger()
         logger.setLevel(logging.INFO)
         handler = logging.StreamHandler(sys.stdout)
-        file_handler = logging.FileHandler('consumer.log')
+        file_handler = logging.FileHandler('logs/consumer.log')
         logger.addHandler(handler)
         logger.addHandler(file_handler)
         handler.setLevel(logging.INFO)
