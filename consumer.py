@@ -43,7 +43,7 @@ class Consumer:
                 empty_queue = False
             
             request_data = json.loads(self.retrieve_s3_request())
-            #process request based on type
+            #TODO: implement other types
             if request_data['type'] == "create":
                 self.widget_create(request_data)
             elif request_data['type'] == "delete":
@@ -58,7 +58,6 @@ class Consumer:
         return False
     
     def retrieve_s3_request(self):
-        #TODO: verify this is reading in key order (smallest first)
         item = self.s3_client.list_objects_v2(Bucket=self.request_bucket_name, MaxKeys=1)
         request_key = item['Contents'][0]['Key']
         request_object = self.s3_client.get_object(Bucket=self.request_bucket_name, Key=request_key)
