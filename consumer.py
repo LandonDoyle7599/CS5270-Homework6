@@ -58,6 +58,7 @@ class Consumer:
         return False
     
     def retrieve_s3_request(self):
+        #TODO: verify this is reading in key order (smallest first)
         item = self.s3_client.list_objects_v2(Bucket=self.request_bucket_name, MaxKeys=1)
         request_key = item['Contents'][0]['Key']
         request_object = self.s3_client.get_object(Bucket=self.request_bucket_name, Key=request_key)
@@ -80,7 +81,8 @@ class Consumer:
             self.dynamo_client.put_item(TableName=self.dynamo_widget_table_name, Item=item)
         else:
             widget = request_data
-            widget_key = f"{self.args.widget_key_prefix}{widget['widgetId']}.json"
+            formatted_owner = widget['owner'].replace(' ', '-').lower()
+            widget_key = f"{self.args.widget_key_prefix}{formatted_owner}{widget['widgetId']}.json"
             self.logger.info("Add to S3 bucket %s a widget with key %s", self.s3_widget_bucket_name, widget_key)
             self.s3_client.put_object(
                 Bucket=self.s3_widget_bucket_name,
