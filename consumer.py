@@ -2,10 +2,13 @@ import boto3
 import argparse
 import time
 import json
+import logging
+import sys
 
 class Consumer:
     def __init__(self):
         self.args = self.parse_arguments()
+        self.initialize_logger()
         self.s3_client = boto3.client('s3', region_name=self.args.region)
         self.request_bucket_name = self.args.request_bucket
         
@@ -19,7 +22,7 @@ class Consumer:
             self.store_in_dynamo = False
             
         else:
-            print("No destination for widgets specified, exiting")
+            self.logger.info("No destination for widgets specified, exiting")
             exit(1)
 
 
@@ -29,9 +32,9 @@ class Consumer:
             #FUTURE: leave room for different retrieval methods
             if self.check_s3_empty():
                 if empty_queue:
-                    print("Still no requests in bucket, exiting...")
+                    self.logger.info("Still no requests in bucket, exiting...")
                     break
-                print("No requests in bucket, waiting...")
+                self.logger.info("No requests in bucket, waiting...")
                 time.sleep(self.args.queue_wait_timeout)
                 empty_queue = True
                 continue
@@ -56,18 +59,14 @@ class Consumer:
     def retrieve_s3_request(self):
         item = self.s3_client.list_objects_v2(Bucket=self.request_bucket_name, MaxKeys=1)
         request_key = item['Contents'][0]['Key']
-        print(f"Processing request {request_key}")
         request_object = self.s3_client.get_object(Bucket=self.request_bucket_name, Key=request_key)
         request_data = request_object['Body'].read().decode('utf-8')
-        print(f"Request data: {request_data}")
         self.s3_client.delete_object(Bucket=self.request_bucket_name, Key=request_key)
-        print(f"Deleted request {request_key} from bucket {self.request_bucket_name}")
         return request_data
                     
     
     def widget_create(self, request_data):
         if self.store_in_dynamo:
-            print("Storing widget in DynamoDB")
             widget = request_data
             item = {
                 'id': {'S': widget['widgetId']},
@@ -76,30 +75,40 @@ class Consumer:
                 'description': {'S': widget.get('description', '')},
                 'otherAttributes': {'S': json.dumps(widget.get('otherAttributes', []))}
             }
-            
+            self.logger.info("Put or update in DynamoDB table widgets a widget with key %s", widget['widgetId'])
             self.dynamo_client.put_item(TableName=self.dynamo_widget_table_name, Item=item)
-            print(f"Widget {widget['widgetId']} stored in DynamoDB table {self.dynamo_widget_table_name}")
         else:
-            print("Storing widget in S3")
             widget = request_data
             widget_key = f"{self.args.widget_key_prefix}{widget['widgetId']}.json"
+            self.logger.info("Add to S3 bucket %s a widget with key %s", self.s3_widget_bucket_name, widget_key)
             self.s3_client.put_object(
                 Bucket=self.s3_widget_bucket_name,
                 Key=widget_key,
                 Body=json.dumps(widget),
                 ContentType='application/json'
             )
-            print(f"Widget {widget['widgetId']} stored in S3 bucket {self.s3_widget_bucket_name} with key {widget_key}")
     
     def widget_delete(self, request_data):
         #TODO: implement in future assignment
-        print("Processing delete request")
         return
     
     def widget_update(self, request_data):
         #TODO: implement in future assignment
-        print("Processing update request")
         return
+    
+    def initialize_logger(self):
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler(sys.stdout)
+        file_handler = logging.FileHandler('consumer.log')
+        logger.addHandler(handler)
+        logger.addHandler(file_handler)
+        handler.setLevel(logging.INFO)
+        file_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        file_handler.setFormatter(formatter)
+        self.logger = logger
         
     
     def parse_arguments(self):
