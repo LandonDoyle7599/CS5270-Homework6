@@ -31,7 +31,8 @@ class Consumer:
         empty_queue = False
         while True:
             #FUTURE: leave room for different retrieval methods
-            if self.check_s3_empty():
+            item = self.s3_client.list_objects_v2(Bucket=self.request_bucket_name, MaxKeys=1)
+            if self.check_s3_empty(item):
                 if empty_queue:
                     self.logger.info("Still no requests in bucket, exiting...")
                     break
@@ -42,7 +43,7 @@ class Consumer:
             else:
                 empty_queue = False
             
-            request_data = json.loads(self.retrieve_s3_request())
+            request_data = json.loads(self.retrieve_s3_request(item))
             #TODO: implement other types
             if request_data['type'] == "create":
                 self.widget_create(request_data)
@@ -51,14 +52,12 @@ class Consumer:
             elif request_data['type'] == "update":
                 self.widget_update(request_data)
             
-    def check_s3_empty(self):
-        item = self.s3_client.list_objects_v2(Bucket=self.request_bucket_name, MaxKeys=1)
+    def check_s3_empty(self, item):
         if 'Contents' not in item:
             return True
         return False
     
-    def retrieve_s3_request(self):
-        item = self.s3_client.list_objects_v2(Bucket=self.request_bucket_name, MaxKeys=1)
+    def retrieve_s3_request(self, item):
         request_key = item['Contents'][0]['Key']
         request_object = self.s3_client.get_object(Bucket=self.request_bucket_name, Key=request_key)
         request_data = request_object['Body'].read().decode('utf-8')
