@@ -1,5 +1,7 @@
 import boto3
 import argparse
+import time
+import json
 
 class Consumer:
     def __init__(self):
@@ -8,7 +10,7 @@ class Consumer:
         self.request_bucket_name = self.args.request_bucket
         
         if self.args.dynamodb_widget_table:
-            dynamo_client = boto3.client('dynamodb', region_name=self.args.region)
+            self.dynamo_client = boto3.client('dynamodb', region_name=self.args.region)
             self.dynamo_widget_table_name = self.args.dynamodb_widget_table
             self.store_in_dynamo = True
             
@@ -22,23 +24,37 @@ class Consumer:
 
 
     def process_widgets(self):
-        #read requests one at a time (smallest key first) from request bucket, then delete and create widgets
+        empty_queue = False
         while True:
             #FUTURE: leave room for different retrieval methods
+            if self.check_s3_empty():
+                if empty_queue:
+                    print("Still no requests in bucket, exiting...")
+                    break
+                print("No requests in bucket, waiting...")
+                time.sleep(self.args.queue_wait_timeout)
+                empty_queue = True
+                continue
+            else:
+                empty_queue = False
+            
             request_data = self.retrieve_s3_request()
             #process request based on type
             if '"type": "WidgetCreateRequest"' in request_data:
-                self.widget_create()
+                self.widget_create(request_data)
             elif '"type": "WidgetDeleteRequest"' in request_data:
-                self.widget_delete()
+                self.widget_delete(request_data)
             elif '"type": "WidgetUpdateRequest"' in request_data:
-                self.widget_update()
+                self.widget_update(request_data)
             
-    def retrieve_s3_request(self):
+    def check_s3_empty(self):
         item = self.s3_client.list_objects_v2(Bucket=self.request_bucket_name, MaxKeys=1)
         if 'Contents' not in item:
-            print("No more requests to process, waiting")
-            #TODO: Implement wait based on argument length
+            return True
+        return False
+    
+    def retrieve_s3_request(self):
+        item = self.s3_client.list_objects_v2(Bucket=self.request_bucket_name, MaxKeys=1)
         request_key = item['Contents'][0]['Key']
         print(f"Processing request {request_key}")
         request_object = self.s3_client.get_object(Bucket=self.request_bucket_name, Key=request_key)
@@ -49,15 +65,38 @@ class Consumer:
         return request_data
                     
     
-    def widget_create(self):
-        return
+    def widget_create(self, request_data):
+        #this function needs to be implemented in the current assignment
+        if self.store_in_dynamo:
+            #parse request data and store in dynamo
+            print("Storing widget in DynamoDB")
+            table = self.dynamo_client.Table(self.dynamo_widget_table_name)
+            widget = json.loads(request_data)
+
+            item = {
+                'widgetId': widget['widgetId'],
+                'owner': widget['owner'],
+                'label': widget.get('label', ''),
+                'description': widget.get('description', ''),
+                'otherAttributes': widget.get('otherAttributes', []),
+                'requestId': widget['requestId']
+            }
+
+            table.put_item(Item=item)
+            print(f"Widget {widget['widgetId']} stored in DynamoDB table {self.dynamo_widget_table_name}")
+        else:
+            print("Storing widget in S3")
+            widget = json.loads(request_data)
+            widget_key = f"{self.args.widget_key_prefix}{widget['widgetId']}.json"
+            self.s3_client.put_object(Bucket=self.s3_widget_bucket_name, Key=widget_key, Body=request_data)
+            print(f"Widget {widget['widgetId']} stored in S3 bucket {self.s3_widget_bucket_name} with key {widget_key}")
     
-    def widget_delete(self):
+    def widget_delete(self, request_data):
         #TODO: implement in future assignment
         print("Processing delete request")
         return
     
-    def widget_update(self):
+    def widget_update(self, request_data):
         #TODO: implement in future assignment
         print("Processing update request")
         return
@@ -83,6 +122,7 @@ class Consumer:
 
 if __name__ == '__main__':
     consumer = Consumer()
+    consumer.process_widgets()
 
 
 
