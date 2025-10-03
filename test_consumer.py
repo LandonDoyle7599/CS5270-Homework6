@@ -112,15 +112,54 @@ def test_process_widgets(s3_client, consumer_s3_dest):
 
 
 #test check s3 (request bucket) empty function
+def test_check_s3_empty(s3_client, consumer_s3_dest):
+    consumer = consumer_s3_dest
+    
+    response = s3_client.list_objects_v2(Bucket=BUCKET)
+    assert consumer.check_s3_empty(response) is True
+    
+    s3_client.put_object(Bucket=BUCKET, Key="object.json", Body=json.dumps({"test": "data"}))
+    response = s3_client.list_objects_v2(Bucket=BUCKET)
+    assert consumer.check_s3_empty(response) is False
 
 
 
 #test retrieve s3 request function
+def test_retrieve_s3_request(s3_client, consumer_s3_dest):
+    consumer = consumer_s3_dest
+    request = {"type":"create","requestId":"9ca0d18a-57ab-4ac6-89dc-146f092ea9fe","widgetId":"ad0bb9e1-28e9-46e0-ad08-8192f4d3b6c6","owner":"John Jones","label":"QQGRLNZY","description":"JLVIEOHPQXKDXKPHOHFOXNKSYDEWRNEQWMPVPVHZVJCHCUIIWSRXITPWOKTMHULMVUNWGRREQYPQYO","otherAttributes":[{"name":"size","value":"926"},{"name":"height","value":"828"},{"name":"height-unit","value":"cm"},{"name":"length-unit","value":"cm"},{"name":"rating","value":"1.6420901"}]}
+    s3_client.put_object(Bucket=BUCKET, Key="request.json", Body=json.dumps(request))
+    
+    item = s3_client.list_objects_v2(Bucket=BUCKET, MaxKeys=1)
+    request_data = consumer.retrieve_s3_request(item)
+    assert json.loads(request_data) == request
+    
+    #ensure request deleted from queue
+    response = s3_client.list_objects_v2(Bucket=BUCKET)
+    assert 'Contents' not in response
+    
+
 
 
 
 #test widget create function
-
+def test_widget_create(s3_client, consumer_s3_dest):
+    consumer = consumer_s3_dest
+    s3_client.create_bucket(Bucket=consumer.s3_widget_bucket_name)
+    
+    request = {"type":"create","requestId":"9ca0d18a-57ab-4ac6-89dc-146f092ea9fe","widgetId":"ad0bb9e1-28e9-46e0-ad08-8192f4d3b6c6","owner":"John Jones","label":"QQGRLNZY","description":"JLVIEOHPQXKDXKPHOHFOXNKSYDEWRNEQWMPVPVHZVJCHCUIIWSRXITPWOKTMHULMVUNWGRREQYPQYO","otherAttributes":[{"name":"size","value":"926"},{"name":"height","value":"828"},{"name":"height-unit","value":"cm"},{"name":"length-unit","value":"cm"},{"name":"rating","value":"1.6420901"}]}
+    consumer.widget_create(request)
+    
+     # check if widget was created
+    response = s3_client.list_objects_v2(Bucket=consumer.s3_widget_bucket_name)    
+    assert 'Contents' in response
+    
+    # create expected key
+    owner = request['owner'].replace(' ', '-').lower()
+    expected_key = f"{consumer.args.widget_key_prefix}{owner}{request['widgetId']}.json"
+    
+    keys = [obj['Key'] for obj in response['Contents']]
+    assert expected_key in keys
 
 #test initialize logger function
 def test_initialize_logger(consumer_s3_dest):
