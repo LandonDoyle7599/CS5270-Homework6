@@ -7,8 +7,8 @@ import sys
 import os
 
 class Consumer:
-    def __init__(self):
-        self.args = self.parse_arguments()
+    def __init__(self, args):
+        self.args = args
         self.initialize_logger()
         self.s3_client = boto3.client('s3', region_name=self.args.region)
         self.request_bucket_name = self.args.request_bucket
@@ -113,24 +113,25 @@ class Consumer:
         self.logger = logger
         
     
-    def parse_arguments(self):
-        arg_parser = argparse.ArgumentParser(description='Consumer for processing widget requests.')
-        arg_parser.add_argument('-r', '--region', type=str, default='us-east-1', help='AWS region to use (default=us-east-1)')
-        arg_parser.add_argument('-rb', '--request-bucket', type=str, required=True, help='Name of bucket that will contain requests')
-        arg_parser.add_argument('-wb', '--widget-bucket', type=str, help='Name of the S3 bucket that holds the widgets')
-        arg_parser.add_argument('-wkp', '--widget-key-prefix', type=str, default='widgets/', help='Prefix for widget objects (default=widgets/)')
-        arg_parser.add_argument('-dwt', '--dynamodb-widget-table', type=str,  help='Name of the DynamoDB table that holds widgets')
-        arg_parser.add_argument('-qwt', '--queue-wait-timeout', type=int, default=10, help='The duration (in seconds) to wait for a message to arrive in the request when trying to receive a message (default=10)')
-        # arg_parser.add_argument('-mrt', '--max-runtime', type=int, default=0, help='Maximum runtime in milliseconds, with 0 meaning no maximum (default=0)')
-        # arg_parser.add_argument('-p', '--profile', type=str, default='default', help='Name of AWS profile to use for credentials (default=default)')
-        # arg_parser.add_argument('-uop', '--use-owner-in-prefix', type=bool, default=False, help="Use the owner's name in the object's prefix when storing in S3")
-        # arg_parser.add_argument('-rq', '--request-queue', type=str,  help='URL of queue that will contain requests')
-        # arg_parser.add_argument('-pdbc', '--pdb-conn', type=str, help='Postgres Database connection string')
-        # arg_parser.add_argument('-pdbu', '--pdb-username', type=str, help='Postgres Database username')
-        # arg_parser.add_argument('-pdbp', '--pdb-password', type=str, help='Password for the Postgres database user')
-        # arg_parser.add_argument('-qvt', '--queue-visibility-timeout', type=int, default=2, help='The duration (in seconds) to the messages received from the queue are hidden from others (default=2)')
-        return arg_parser.parse_args()
+def parse_arguments():
+    arg_parser = argparse.ArgumentParser(description='Consumer for processing widget requests.')
+    arg_parser.add_argument('-r', '--region', type=str, default='us-east-1', help='AWS region to use (default=us-east-1)')
+    arg_parser.add_argument('-rb', '--request-bucket', type=str, required=True, help='Name of bucket that will contain requests')
+    arg_parser.add_argument('-wb', '--widget-bucket', type=str, help='Name of the S3 bucket that holds the widgets')
+    arg_parser.add_argument('-wkp', '--widget-key-prefix', type=str, default='widgets/', help='Prefix for widget objects (default=widgets/)')
+    arg_parser.add_argument('-dwt', '--dynamodb-widget-table', type=str,  help='Name of the DynamoDB table that holds widgets')
+    arg_parser.add_argument('-qwt', '--queue-wait-timeout', type=int, default=10, help='The duration (in seconds) to wait for a message to arrive in the request when trying to receive a message (default=10)')
+    # arg_parser.add_argument('-mrt', '--max-runtime', type=int, default=0, help='Maximum runtime in milliseconds, with 0 meaning no maximum (default=0)')
+    # arg_parser.add_argument('-p', '--profile', type=str, default='default', help='Name of AWS profile to use for credentials (default=default)')
+    # arg_parser.add_argument('-uop', '--use-owner-in-prefix', type=bool, default=False, help="Use the owner's name in the object's prefix when storing in S3")
+    # arg_parser.add_argument('-rq', '--request-queue', type=str,  help='URL of queue that will contain requests')
+    # arg_parser.add_argument('-pdbc', '--pdb-conn', type=str, help='Postgres Database connection string')
+    # arg_parser.add_argument('-pdbu', '--pdb-username', type=str, help='Postgres Database username')
+    # arg_parser.add_argument('-pdbp', '--pdb-password', type=str, help='Password for the Postgres database user')
+    # arg_parser.add_argument('-qvt', '--queue-visibility-timeout', type=int, default=2, help='The duration (in seconds) to the messages received from the queue are hidden from others (default=2)')
+    return arg_parser.parse_args()
 
 if __name__ == '__main__':
-    consumer = Consumer()
+    args = parse_arguments()
+    consumer = Consumer(args)
     consumer.process_widgets()
