@@ -41,18 +41,38 @@ def dynamo_client():
             }
         )
         yield dynamodb  # provide to tests
+        
+@pytest.fixture
+def consumer_s3_dest(s3_client, dynamo_client):
+    class Args:
+        region = "us-east-1"
+        request_bucket = BUCKET
+        dynamodb_widget_table = None
+        widget_bucket = "widget-bucket"
+        widget_key_prefix = "widgets/"
+        queue_wait_timeout = 10
 
-#test initialization of Consumer class with dynamo dest table
-def test_consumer_init_dynamo(s3_client, dynamo_client):
+    args = Args()
+    consumer = Consumer(args)
+    return consumer
+
+@pytest.fixture
+def consumer_dynamo_dest(s3_client, dynamo_client):
     class Args:
         region = "us-east-1"
         request_bucket = BUCKET
         dynamodb_widget_table = "widget-table"
         widget_bucket = None
-        queue_wait_timeout = 1
+        widget_key_prefix = "widgets/"
+        queue_wait_timeout = 10
 
     args = Args()
     consumer = Consumer(args)
+    return consumer
+
+#test initialization of Consumer class with dynamo dest table
+def test_consumer_init_dynamo(s3_client, dynamo_client, consumer_dynamo_dest):
+    consumer = consumer_dynamo_dest
     assert consumer.s3_client is not None
     assert consumer.request_bucket_name == BUCKET
     assert consumer.dynamo_client is not None
@@ -60,35 +80,18 @@ def test_consumer_init_dynamo(s3_client, dynamo_client):
     assert consumer.store_in_dynamo is True
     
 #test initialization of Consumer class with s3 dest bucket
-def test_consumer_init_s3(s3_client):
-    class Args:
-        region = "us-east-1"
-        request_bucket = BUCKET
-        dynamodb_widget_table = None
-        widget_bucket = "widget-bucket"
-        queue_wait_timeout = 1
-
-    args = Args()
-    consumer = Consumer(args)
+def test_consumer_init_s3(s3_client, consumer_s3_dest):
+    consumer = consumer_s3_dest
     assert consumer.s3_client is not None
     assert consumer.request_bucket_name == BUCKET
     assert consumer.s3_widget_bucket_name == "widget-bucket"
     assert consumer.store_in_dynamo is False
 
 #test widget processing logic
-def test_process_widgets(s3_client):
-    class Args:
-        region = "us-east-1"
-        request_bucket = BUCKET
-        dynamodb_widget_table = None
-        widget_bucket = "widget-bucket"
-        queue_wait_timeout = 1
-        widget_key_prefix = "widgets/"
-
-    args = Args()
-    consumer = Consumer(args)
+def test_process_widgets(s3_client, consumer_s3_dest):
+    consumer = consumer_s3_dest
     #create the widget bucket
-    s3_client.create_bucket(Bucket=args.widget_bucket)
+    s3_client.create_bucket(Bucket=consumer.s3_widget_bucket_name)
     
     #provided sample request
     request = {"type":"create","requestId":"9ca0d18a-57ab-4ac6-89dc-146f092ea9fe","widgetId":"ad0bb9e1-28e9-46e0-ad08-8192f4d3b6c6","owner":"John Jones","label":"QQGRLNZY","description":"JLVIEOHPQXKDXKPHOHFOXNKSYDEWRNEQWMPVPVHZVJCHCUIIWSRXITPWOKTMHULMVUNWGRREQYPQYO","otherAttributes":[{"name":"size","value":"926"},{"name":"height","value":"828"},{"name":"height-unit","value":"cm"},{"name":"length-unit","value":"cm"},{"name":"rating","value":"1.6420901"}]}
@@ -101,7 +104,7 @@ def test_process_widgets(s3_client):
     assert 'Contents' not in response
     
     #verify widget was created in widget bucket
-    response = s3_client.list_objects_v2(Bucket=args.widget_bucket)
+    response = s3_client.list_objects_v2(Bucket=consumer.s3_widget_bucket_name)
     assert 'Contents' in response
     
     #TODO: verify this works with update and delete requests in the future
@@ -120,15 +123,8 @@ def test_process_widgets(s3_client):
 
 
 #test initialize logger function
-def test_initialize_logger():
-    class Args:
-        request_bucket = BUCKET
-        widget_bucket = "widget-bucket"
-        region = "us-east-1"
-        dynamodb_widget_table = None
-
-    args = Args()
-    consumer = Consumer(args)
+def test_initialize_logger(consumer_s3_dest):
+    consumer = consumer_s3_dest
     assert consumer.logger is not None
     consumer.logger.info("Test log message")
     #verify log file created
