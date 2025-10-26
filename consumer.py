@@ -12,29 +12,27 @@ class Consumer:
         self.initialize_logger()
         self.s3_client = boto3.client('s3', region_name=self.args.region)
         
+        #source logic
         if self.args.request_bucket:
             self.request_bucket_name = self.args.request_bucket
             self.retrieval_method = "s3"
-            
         elif self.args.request_queue:
             self.sqs_client = boto3.client('sqs', region_name=self.args.region)
             self.request_queue_url = self.sqs_client.get_queue_url(QueueName=self.args.request_queue)['QueueUrl']
             self.retrieval_method = "sqs"
             self.sqs_cache = []
-            
         else:
             self.logger.info("No source for widget requests specified, exiting")
             exit(1) 
         
+        #destination logic
         if self.args.dynamodb_widget_table:
             self.dynamo_client = boto3.client('dynamodb', region_name=self.args.region)
             self.dynamo_widget_table_name = self.args.dynamodb_widget_table
             self.store_in_dynamo = True
-            
         elif self.args.widget_bucket:
             self.s3_widget_bucket_name = self.args.widget_bucket
             self.store_in_dynamo = False
-            
         else:
             self.logger.info("No destination for widgets specified, exiting")
             exit(1)
@@ -43,6 +41,7 @@ class Consumer:
     def process_widgets(self):
         empty_queue = False
         while True:
+            #s3 method
             if self.retrieval_method == "s3":
                 item = self.s3_client.list_objects_v2(Bucket=self.request_bucket_name, MaxKeys=1)
                 if self.check_s3_empty(item):
@@ -55,30 +54,44 @@ class Consumer:
                     continue
                 else:
                     empty_queue = False
+                request_data = json.loads(self.retrieve_s3_request(item))
+                    
+            #sqs method
             elif self.retrieval_method == "sqs":
-                response = self.sqs_client.receive_message(
-                    QueueUrl=self.request_queue_url,
-                    MaxNumberOfMessages=1,
-                    WaitTimeSeconds=self.args.queue_wait_timeout
-                )
-                if 'Messages' not in response:
-                    if empty_queue:
-                        self.logger.info("Still no requests in queue, exiting...")
-                        break
-                    self.logger.info("No requests in queue, waiting...")
-                    empty_queue = True
+                if len(self.sqs_cache) > 0:
+                    item = self.sqs_cache.pop(0)
+                    receipt_handle = item['ReceiptHandle']
+                    self.sqs_client.delete_message(
+                        QueueUrl=self.request_queue_url,
+                        ReceiptHandle=receipt_handle
+                    )
+                    request_data = json.loads(item['Body'])
                     continue
                 else:
-                    empty_queue = False
-                item = response['Messages'][0]
-                self.sqs_cache.extend(response['Messages'][1:])
-                receipt_handle = item['ReceiptHandle']
-                self.sqs_client.delete_message(
-                    QueueUrl=self.request_queue_url,
-                    ReceiptHandle=receipt_handle
-                )
+                    response = self.sqs_client.receive_message(
+                        QueueUrl=self.request_queue_url,
+                        MaxNumberOfMessages=10,
+                        WaitTimeSeconds=self.args.queue_wait_timeout
+                    )
+                    if 'Messages' not in response:
+                        if empty_queue:
+                            self.logger.info("Still no requests in queue, exiting...")
+                            break
+                        self.logger.info("No requests in queue, waiting...")
+                        empty_queue = True
+                        continue
+                    else:
+                        empty_queue = False
+                    self.sqs_cache.extend(response['Messages'])
+                    item = self.sqs_cache.pop(0)
+                    receipt_handle = item['ReceiptHandle']
+                    self.sqs_client.delete_message(
+                        QueueUrl=self.request_queue_url,
+                        ReceiptHandle=receipt_handle
+                    )
+                    request_data = json.loads(item['Body'])
             
-            request_data = json.loads(self.retrieve_s3_request(item))
+            #processing block
             if request_data['type'] == "create":
                 self.widget_create(request_data)
             elif request_data['type'] == "delete":
