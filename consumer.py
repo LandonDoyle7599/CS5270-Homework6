@@ -11,7 +11,20 @@ class Consumer:
         self.args = args
         self.initialize_logger()
         self.s3_client = boto3.client('s3', region_name=self.args.region)
-        self.request_bucket_name = self.args.request_bucket
+        
+        if self.args.request_bucket:
+            self.request_bucket_name = self.args.request_bucket
+            self.retrieval_method = "s3"
+            
+        elif self.args.request_queue:
+            self.sqs_client = boto3.client('sqs', region_name=self.args.region)
+            self.request_queue_url = self.sqs_client.get_queue_url(QueueName=self.args.request_queue)['QueueUrl']
+            self.retrieval_method = "sqs"
+            self.sqs_cache = []
+            
+        else:
+            self.logger.info("No source for widget requests specified, exiting")
+            exit(1) 
         
         if self.args.dynamodb_widget_table:
             self.dynamo_client = boto3.client('dynamodb', region_name=self.args.region)
@@ -30,21 +43,42 @@ class Consumer:
     def process_widgets(self):
         empty_queue = False
         while True:
-            #FUTURE: leave room for different retrieval methods
-            item = self.s3_client.list_objects_v2(Bucket=self.request_bucket_name, MaxKeys=1)
-            if self.check_s3_empty(item):
-                if empty_queue:
-                    self.logger.info("Still no requests in bucket, exiting...")
-                    break
-                self.logger.info("No requests in bucket, waiting...")
-                time.sleep(self.args.queue_wait_timeout)
-                empty_queue = True
-                continue
-            else:
-                empty_queue = False
+            if self.retrieval_method == "s3":
+                item = self.s3_client.list_objects_v2(Bucket=self.request_bucket_name, MaxKeys=1)
+                if self.check_s3_empty(item):
+                    if empty_queue:
+                        self.logger.info("Still no requests in bucket, exiting...")
+                        break
+                    self.logger.info("No requests in bucket, waiting...")
+                    time.sleep(self.args.queue_wait_timeout)
+                    empty_queue = True
+                    continue
+                else:
+                    empty_queue = False
+            elif self.retrieval_method == "sqs":
+                response = self.sqs_client.receive_message(
+                    QueueUrl=self.request_queue_url,
+                    MaxNumberOfMessages=1,
+                    WaitTimeSeconds=self.args.queue_wait_timeout
+                )
+                if 'Messages' not in response:
+                    if empty_queue:
+                        self.logger.info("Still no requests in queue, exiting...")
+                        break
+                    self.logger.info("No requests in queue, waiting...")
+                    empty_queue = True
+                    continue
+                else:
+                    empty_queue = False
+                item = response['Messages'][0]
+                self.sqs_cache.extend(response['Messages'][1:])
+                receipt_handle = item['ReceiptHandle']
+                self.sqs_client.delete_message(
+                    QueueUrl=self.request_queue_url,
+                    ReceiptHandle=receipt_handle
+                )
             
             request_data = json.loads(self.retrieve_s3_request(item))
-            #TODO: implement other types
             if request_data['type'] == "create":
                 self.widget_create(request_data)
             elif request_data['type'] == "delete":
@@ -90,12 +124,46 @@ class Consumer:
             )
     
     def widget_delete(self, request_data):
-        #TODO: implement in future assignment
-        return
+        if self.store_in_dynamo:
+            widget_id = request_data['widgetId']
+            # TODO: log
+            self.dynamo_client.delete_item(
+                TableName=self.dynamo_widget_table_name,
+                Key={'id': {'S': widget_id}}
+            )
+        else:
+            widget = request_data
+            formatted_owner = widget['owner'].replace(' ', '-').lower()
+            widget_key = f"{self.args.widget_key_prefix}{formatted_owner}{widget['widgetId']}.json"
+            # TODO: log
+            self.s3_client.delete_object(
+                Bucket=self.s3_widget_bucket_name,
+                Key=widget_key
+            )
     
     def widget_update(self, request_data):
-        #TODO: implement in future assignment
-        return
+        if self.store_in_dynamo:
+            widget = request_data
+            item = {
+                'id': {'S': widget['widgetId']},
+                'owner': {'S': widget['owner']},
+                'label': {'S': widget.get('label', '')},
+                'description': {'S': widget.get('description', '')},
+                'otherAttributes': {'S': json.dumps(widget.get('otherAttributes', []))}
+            }
+            # TODO: log
+            self.dynamo_client.put_item(TableName=self.dynamo_widget_table_name, Item=item)
+        else:
+            widget = request_data
+            formatted_owner = widget['owner'].replace(' ', '-').lower()
+            widget_key = f"{self.args.widget_key_prefix}{formatted_owner}{widget['widgetId']}.json"
+            # TODO: log
+            self.s3_client.put_object(
+                Bucket=self.s3_widget_bucket_name,
+                Key=widget_key,
+                Body=json.dumps(widget),
+                ContentType='application/json'
+            )
     
     def initialize_logger(self):
         os.makedirs('logs', exist_ok=True)
@@ -121,10 +189,10 @@ def parse_arguments():
     arg_parser.add_argument('-wkp', '--widget-key-prefix', type=str, default='widgets/', help='Prefix for widget objects (default=widgets/)')
     arg_parser.add_argument('-dwt', '--dynamodb-widget-table', type=str,  help='Name of the DynamoDB table that holds widgets')
     arg_parser.add_argument('-qwt', '--queue-wait-timeout', type=int, default=10, help='The duration (in seconds) to wait for a message to arrive in the request when trying to receive a message (default=10)')
+    arg_parser.add_argument('-rq', '--request-queue', type=str,  help='Name of the SQS queue that will contain requests')
     # arg_parser.add_argument('-mrt', '--max-runtime', type=int, default=0, help='Maximum runtime in milliseconds, with 0 meaning no maximum (default=0)')
     # arg_parser.add_argument('-p', '--profile', type=str, default='default', help='Name of AWS profile to use for credentials (default=default)')
     # arg_parser.add_argument('-uop', '--use-owner-in-prefix', type=bool, default=False, help="Use the owner's name in the object's prefix when storing in S3")
-    # arg_parser.add_argument('-rq', '--request-queue', type=str,  help='URL of queue that will contain requests')
     # arg_parser.add_argument('-pdbc', '--pdb-conn', type=str, help='Postgres Database connection string')
     # arg_parser.add_argument('-pdbu', '--pdb-username', type=str, help='Postgres Database username')
     # arg_parser.add_argument('-pdbp', '--pdb-password', type=str, help='Password for the Postgres database user')
