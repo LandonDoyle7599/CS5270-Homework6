@@ -139,7 +139,7 @@ class Consumer:
     def widget_delete(self, request_data):
         if self.store_in_dynamo:
             widget_id = request_data['widgetId']
-            # TODO: log
+            self.logger.info("Delete from DynamoDB table widgets the widget with key %s", widget_id)
             self.dynamo_client.delete_item(
                 TableName=self.dynamo_widget_table_name,
                 Key={'id': {'S': widget_id}}
@@ -148,7 +148,7 @@ class Consumer:
             widget = request_data
             formatted_owner = widget['owner'].replace(' ', '-').lower()
             widget_key = f"{self.args.widget_key_prefix}{formatted_owner}{widget['widgetId']}.json"
-            # TODO: log
+            self.logger.info("Delete from S3 bucket %s the widget with key %s", self.s3_widget_bucket_name, widget_key)
             self.s3_client.delete_object(
                 Bucket=self.s3_widget_bucket_name,
                 Key=widget_key
@@ -164,13 +164,13 @@ class Consumer:
                 'description': {'S': widget.get('description', '')},
                 'otherAttributes': {'S': json.dumps(widget.get('otherAttributes', []))}
             }
-            # TODO: log
+            self.logger.info("Put or update in DynamoDB table widgets a widget with key %s", widget['widgetId'])
             self.dynamo_client.put_item(TableName=self.dynamo_widget_table_name, Item=item)
         else:
             widget = request_data
             formatted_owner = widget['owner'].replace(' ', '-').lower()
             widget_key = f"{self.args.widget_key_prefix}{formatted_owner}{widget['widgetId']}.json"
-            # TODO: log
+            self.logger.info("Add to S3 bucket %s a widget with key %s", self.s3_widget_bucket_name, widget_key)
             self.s3_client.put_object(
                 Bucket=self.s3_widget_bucket_name,
                 Key=widget_key,
