@@ -193,6 +193,8 @@ def test_process_update_widgets(s3_client, consumer_s3_dest):
     expected_key = f"{consumer.args.widget_key_prefix}{owner}{request_update['widgetId']}.json"
     response = s3_client.get_object(Bucket=consumer.s3_widget_bucket_name, Key=expected_key)
     widget_data = json.loads(response['Body'].read().decode('utf-8'))
+    assert widget_data['otherAttributes'][0]['value'] == "745"
+    
     
 
 #test check s3 (request bucket) empty function
