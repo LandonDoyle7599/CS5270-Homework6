@@ -18,7 +18,7 @@ class Consumer:
             self.retrieval_method = "s3"
         elif self.args.request_queue:
             self.sqs_client = boto3.client('sqs', region_name=self.args.region)
-            self.request_queue_url = self.sqs_client.get_queue_url(QueueName=self.args.request_queue)['QueueUrl']
+            self.request_queue = self.args.request_queue
             self.retrieval_method = "sqs"
             self.sqs_cache = []
         else:
@@ -54,7 +54,7 @@ class Consumer:
                     continue
                 else:
                     empty_queue = False
-                request_data = json.loads(self.retrieve_s3_request(item))
+                request_data = json.loads(self.parse_and_delete_s3_request(item))
                     
             #sqs method
             elif self.retrieval_method == "sqs":
@@ -62,14 +62,13 @@ class Consumer:
                     item = self.sqs_cache.pop(0)
                     receipt_handle = item['ReceiptHandle']
                     self.sqs_client.delete_message(
-                        QueueUrl=self.request_queue_url,
+                        QueueUrl=self.request_queue,
                         ReceiptHandle=receipt_handle
                     )
                     request_data = json.loads(item['Body'])
-                    continue
                 else:
                     response = self.sqs_client.receive_message(
-                        QueueUrl=self.request_queue_url,
+                        QueueUrl=self.request_queue,
                         MaxNumberOfMessages=10,
                         WaitTimeSeconds=self.args.queue_wait_timeout
                     )
@@ -86,7 +85,7 @@ class Consumer:
                     item = self.sqs_cache.pop(0)
                     receipt_handle = item['ReceiptHandle']
                     self.sqs_client.delete_message(
-                        QueueUrl=self.request_queue_url,
+                        QueueUrl=self.request_queue,
                         ReceiptHandle=receipt_handle
                     )
                     request_data = json.loads(item['Body'])
@@ -104,7 +103,7 @@ class Consumer:
             return True
         return False
     
-    def retrieve_s3_request(self, item):
+    def parse_and_delete_s3_request(self, item):
         request_key = item['Contents'][0]['Key']
         request_object = self.s3_client.get_object(Bucket=self.request_bucket_name, Key=request_key)
         request_data = request_object['Body'].read().decode('utf-8')
@@ -197,7 +196,7 @@ class Consumer:
 def parse_arguments():
     arg_parser = argparse.ArgumentParser(description='Consumer for processing widget requests.')
     arg_parser.add_argument('-r', '--region', type=str, default='us-east-1', help='AWS region to use (default=us-east-1)')
-    arg_parser.add_argument('-rb', '--request-bucket', type=str, required=True, help='Name of bucket that will contain requests')
+    arg_parser.add_argument('-rb', '--request-bucket', type=str, help='Name of bucket that will contain requests')
     arg_parser.add_argument('-wb', '--widget-bucket', type=str, help='Name of the S3 bucket that holds the widgets')
     arg_parser.add_argument('-wkp', '--widget-key-prefix', type=str, default='widgets/', help='Prefix for widget objects (default=widgets/)')
     arg_parser.add_argument('-dwt', '--dynamodb-widget-table', type=str,  help='Name of the DynamoDB table that holds widgets')
