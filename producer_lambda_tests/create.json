@@ -1,10 +1,3 @@
 {
-  "body": {
-            "type": "create",
-            "requestId": "request id",
-            "widgetId": "widget id",
-            "owner": "joe",
-            "label": "here is my label",
-            "description": "description description"
-        }
+  "body": "{\"type\":\"create\",\"requestId\":\"request id\",\"widgetId\":\"widget id\",\"owner\":\"joe\",\"label\":\"here is my label\",\"description\":\"description description\"}"
 }

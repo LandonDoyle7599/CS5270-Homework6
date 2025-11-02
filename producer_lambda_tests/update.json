@@ -1,9 +1,3 @@
 {
-  "body": {
-            "type": "update",
-            "requestId": "request id",
-            "widgetId": "widget id",
-            "owner": "joe",
-            "description": "description description"
-        }
+  "body": "{\"type\":\"update\",\"requestId\":\"request id\",\"widgetId\":\"widget id\",\"owner\":\"joe\",\"description\":\"description description\"}"
 }
