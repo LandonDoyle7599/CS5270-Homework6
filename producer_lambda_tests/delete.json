@@ -1,0 +1,8 @@
+{
+  "body": {
+            "type": "delete",
+            "requestId": "request id",
+            "widgetId": "widget id",
+            "owner": "joe"
+        }
+}

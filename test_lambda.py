@@ -63,9 +63,7 @@ def test_delete_widget_request(sqs_queue):
             'type': 'delete',
             'requestId': 'request id',
             'widgetId': 'widget id',
-            'owner': 'joe',
-            'label': 'here is my label',
-            'description': 'description description'
+            'owner': 'joe'
         })
     }
     

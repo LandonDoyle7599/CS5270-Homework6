@@ -36,13 +36,13 @@ def lambda_handler(event, context):
                 'body': json.dumps({'message': 'Missing required field: owner'})
             }
             
-        if 'label' not in body:
+        if type == 'create' and 'label' not in body:
             return {
                 'statusCode': 400,
                 'body': json.dumps({'message': 'Missing required field: label'})
             }
             
-        if 'description' not in body:
+        if type == 'create' and 'description' not in body:
             return {
                 'statusCode': 400,
                 'body': json.dumps({'message': 'Missing required field: description'})
